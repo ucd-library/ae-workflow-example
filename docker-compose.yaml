@@ -1,0 +1,209 @@
+version: '3'
+
+###
+# Fin Server from deployed DockerHub container images
+###
+services:
+
+  ###
+  # Front end apache server for proxying to gateway from host port
+  ###
+  lb:
+    image: gcr.io/ucdlib-pubreg/fin-apache-lb:2.1.2
+    ports:
+      - ${HOST_PORT:-3000}:80
+
+  ###
+  # Front End NodeJS Application Server
+  ###
+  gateway:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - fedora-data:/data
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - fcrepo
+      - redis
+      - elasticsearch
+    command: npm run gateway
+    # command: bash -c 'tail -f /dev/null'
+
+  ###
+  # Fedora Repository
+  ###
+  fcrepo:
+    image: gcr.io/ucdlib-pubreg/fin-fcrepo:2.1.2
+    ports:
+      - 8080:8080
+    volumes:
+      - fedora-data:/usr/local/tomcat/fcrepo-home/data
+      - activemq-data:/usr/local/tomcat/ActiveMQ
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+
+  ###
+  # Fedora Postgres Service
+  ###
+  postgres:
+    image: gcr.io/ucdlib-pubreg/fin-postgres:2.1.2
+    environment: 
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  ###
+  # Fin Init Service
+  ###
+  init:
+    build: .
+
+  ###
+  # Session, admin store
+  ###
+  redis:
+    image: redis:3.2
+    volumes:
+      - redis-data:/data
+    depends_on:
+      - fcrepo
+
+  ###
+  # UC DAMS Client API
+  ###
+  api:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - elasticsearch
+    command: npm run api
+  # command: bash -c 'tail -f /dev/null'
+
+  finac:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    command: node fin-ac/index.js
+    # command: bash -c 'tail -f /dev/null'
+
+  ###
+  # External Database Sync Service
+  ###
+  dbsync:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - gateway
+    command: npm run dbsync
+    # command: bash -c 'tail -f /dev/null'
+
+  ###
+  # ES Index Management Service
+  ###
+  es-index-management:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - gateway
+    command: npm run es-index-management
+
+  ###
+  # GCS - Sccess & Sync
+  ###
+  gcs:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - gcs-disk-cache:/etc/gcs-disk-cache
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - gateway
+    command: npm run gcs
+    # command: bash -c 'tail -f /dev/null'
+
+  ###
+  # Search
+  ###
+  elasticsearch:
+    image: gcr.io/ucdlib-pubreg/fin-elastic-search:2.1.2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    env_file:
+      - .env
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    depends_on:
+      - fcrepo
+    # command: bash -c 'tail -f /dev/null'
+
+  ###
+  # Fin Workflows
+  ###
+  workflow:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - gateway
+    command: npm run workflow
+    # command: bash -c 'tail -f /dev/null'
+
+
+  ###
+  # OIDC AuthenticationService
+  ###
+  oidc:
+    image: gcr.io/ucdlib-pubreg/fin-base-service:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    depends_on:
+      - gateway
+    # command: bash -c 'tail -f /dev/null'
+    command: npm run oidc
+
+  pg-rest:
+    image: gcr.io/ucdlib-pubreg/fin-pg-rest:2.1.2
+    volumes:
+      - ${GCLOUD_SERVICE_ACCOUNT_MOUNT:-./service-account.json}:/etc/fin/service-account.json
+    env_file:
+      - .env
+    # command: bash -c "tail -f /dev/null"
+
+###
+# Docker data volumes
+###
+volumes:
+  fedora-data:
+    driver: local
+  activemq-data:
+    driver: local
+  pg-data:
+    driver: local
+  es-data:
+    driver: local
+  redis-data:
+    driver: local
+  gcs-fuse:
+    driver: local
+  gcs-disk-cache:
+    driver: local

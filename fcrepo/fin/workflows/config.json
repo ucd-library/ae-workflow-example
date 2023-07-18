@@ -1,0 +1,20 @@
+{
+  "defaults" : {
+    "gcsBucket" : "ae-workflow-test-{{GCS_BUCKET_ENV}}",
+    "notifyOnSuccess" : "/svc:reindex"
+  },
+
+  "definitions" : {
+
+    "harvest" : {
+      "type" : "gc-workflow",
+      "data" : {
+        "uploadToTmpBucket" : false,
+        "gcsSubpath" : "harvest",
+        "databaseServerIp" : "{{WORKFLOW_DATABASE_IP}}",
+        "jobContainer" : "gcr.io/ucdlib-pubreg/ae-test-worker"
+      }
+    }
+
+  }
+}

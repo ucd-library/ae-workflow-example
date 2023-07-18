@@ -1,0 +1,21 @@
+{
+  "sync" : {
+    "containers" : [
+      {
+        "bucket" : "ae-workflow-test-{{GCS_BUCKET_ENV}}",
+        "basePath" : "/user",
+        "direction" : "gcs-to-fcrepo",
+        "initDataHydration" : true,
+        "enabledDeletes" : true
+      },
+      {
+        "bucket" : "ae-workflow-test-{{GCS_BUCKET_ENV}}",
+        "basePath" : "/simple-test",
+        "direction" : "gcs-to-fcrepo",
+        "initDataHydration" : true,
+        "enabledDeletes" : true
+      }
+    ]
+  },
+  "access" : []
+}

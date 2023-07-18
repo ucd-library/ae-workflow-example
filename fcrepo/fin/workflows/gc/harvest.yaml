@@ -1,0 +1,77 @@
+# Job Run Integration Docks
+# https://cloud.google.com/run/docs/configuring/containers#yaml
+# https://cloud.google.com/workflows/docs/reference/googleapis/run/v1/namespaces.jobs/create
+# https://cloud.google.com/run/docs/reference/rest/v1/Container#execaction
+
+main:
+    params: [args]
+    steps:
+      - init:
+          assign:
+            - location: us-central1
+            - project_id: digital-ucdavis-edu
+            - client_email: dams-local-dev
+      - setup_user_job:
+          call: googleapis.run.v1.namespaces.jobs.create
+          args:
+              location: ${location}
+              parent: ${"namespaces/" + project_id}
+              body:
+                  apiVersion: run.googleapis.com/v1
+                  metadata:
+                      name: ${"ae-test-" + args.finWorkflowId}
+                      labels:
+                          cloud.googleapis.com/location: ${location}
+                          project: ae-test
+                          fin-workflow-name: ${args.gcWorkflowName}
+                      annotations:
+                          run.googleapis.com/launch-stage: ALPHA
+                  kind: "Job"
+                  spec: 
+                      template:
+                          metadata:
+                            annotations:
+                              run.googleapis.com/vpc-access-connector: cloud-run-connector
+                              run.googleapis.com/vpc-access-egress: private-ranges-only
+                          spec:
+                              template:
+                                  spec:
+                                      containers:
+                                          - image: ${args.jobContainer}
+                                            resources:
+                                                requests:
+                                                    memory: "8Gi"
+                                                    cpu: "2000m"
+                                                limits:
+                                                    memory: "8Gi"
+                                                    cpu: "2000m"
+                                            command: "node"
+                                            env:
+                                              - name: "PG_HOST"
+                                                value: ${args.databaseServerIp}
+                                              - name: "GCS_BUCKET"
+                                                value: ${args.gcsBucket}
+                                            args: ${["cli/run-test.js", args.finPath]}
+                                            # imagePullPolicy: "Always"
+                                      timeoutSeconds: 600
+                                      serviceAccountName: ${client_email + "@" + project_id + ".iam.gserviceaccount.com"}
+          result: create_job_result
+      - run_user_job:
+          call: googleapis.run.v1.namespaces.jobs.run
+          args:
+              name: ${"namespaces/" + project_id + "/jobs/ae-test-" + args.finWorkflowId}
+              location: ${location}
+          result: job_execution
+      - check_job_status:
+          switch:
+            - condition: ${job_execution.spec.taskCount != job_execution.status.succeededCount}
+              next: end
+            - condition: ${job_execution.spec.taskCount == job_execution.status.succeededCount}
+              next: job_succeeded
+      - job_succeeded:
+          call: googleapis.run.v1.namespaces.jobs.delete
+          args:
+              name: ${"namespaces/" + project_id + "/jobs/ae-test-" + args.finWorkflowId}
+              location: ${location}
+          result: job_execution
+      
